@@ -341,6 +341,8 @@ function drawWorld(worldObject){
 	
 	var startTime = (new Date()).getTime();
 
+	var counter = 0;
+
 	var table = $("<table><tbody></tbody></table>");
 	tbody = table.find("tbody");
 
@@ -351,7 +353,8 @@ function drawWorld(worldObject){
 			if(typeof(world[row][col])=='undefined'){
 				td = $("<td></td>");
 			} else {
-				td = $("<td><img src='img/" + world[row][col].getImage() + "' class='" + world[row][col].getRotationClass() + "' /></td>");
+				td = $("<td><img src='img/" + world[row][col].getImage() + "' class='" + world[row][col].getRotationClass() + "' tindex='" + counter + "' row='" + row + "' col='" + col + "' /></td>");
+				counter++;
 			}
 			tr.append(td);
 		}
