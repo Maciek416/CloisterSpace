@@ -16,6 +16,19 @@ var edgeDefs = {
 
 
 var Tile = function(imageName, north, east, south, west, hasTwoCities){
+	var rotationClass = "";
+
+	var turnedEdge = function(dir){
+		// return which edge we would be reading from IF the tile 
+		// were to be rotated once clockwise
+		return ({
+			east: "north",
+			south: "east",
+			west: "south",
+			north: "west"
+		})[dir];
+	};
+
 	return {
 		edges: {
 			north: north,
@@ -28,25 +41,65 @@ var Tile = function(imageName, north, east, south, west, hasTwoCities){
 			return imageName;
 		},
 
-		connectableTo: function(inDirection, otherTile){
+		getRotationClass: function(){
+			return rotationClass;
+		},
+
+		rotate: function(turns){
+			if(turns == 0){ 
+				return;
+			}
+			if(turns == 1 || turns==2 || turns==3) {
+				rotationClass = "r" + turns;
+			} else {
+				throw "invalid rotation";
+			}
+
+			for(var i = 0; i < turns; i++){
+				//
+				// shuffle the edges clockwise
+				//
+				var n = this.edges.north;
+				var e = this.edges.east;
+				var s = this.edges.south;
+				var w = this.edges.west;
+				this.edges.east = n;
+				this.edges.south = e;
+				this.edges.west = s;
+				this.edges.north = w;
+			}
+		},
+
+		connectableTo: function(inDirection, otherTile, turns){
 			//
 			// does otherTile match this tile at connecting edge of inDirection?
 			//
-			return this.edges[inDirection] === otherTile.edges[{
+			var dir = inDirection;
+			if(turns > 0){
+				for(var i = 0; i < turns; i++){
+					dir = turnedEdge(dir);
+				}
+			}
+			//
+			// consider this potentially-rotated edge @ dir against some placed edge
+			//
+			var thisEdge = this.edges[dir];
+			var otherEdge = otherTile.edges[{
 				north:"south",
 				east:"west",
 				south:"north",
 				west:"east"
 			}[inDirection]];
+			return thisEdge === otherEdge;
 		},
 
 		toJSON: function(){
 			return JSON.stringify({
 				imageName: imageName,
-				north: north,
-				south: south,
-				west: west,
-				east: east,
+				north: this.edges.north,
+				south: this.edges.south,
+				west: this.edges.west,
+				east: this.edges.east,
 				hasTwoCities: hasTwoCities
 			});
 		}
@@ -155,6 +208,11 @@ function generateRandomWorld(){
 	// bootstrap tile is placed in the middle.
 	placeTile(72,72,tiles[0]);
 
+	var maxcol = 72;
+	var mincol = 72;
+	var maxrow = 72;
+	var minrow = 72;
+
 	//
 	// Build the world outwards in carcassone style by building lists 
 	// of compatible locations and then choosing one randomly.
@@ -193,36 +251,44 @@ function generateRandomWorld(){
 		for(var row = 1; row < world.length - 1; row++){
 			for(var col = 1; col < world[row].length - 1; col++){
 
-				if(typeof(world[row][col])=='undefined'){
+				if(typeof(world[row][col])==='undefined'){
 
 					// this is an empty slot. See if we can place a tile here
-
-					var valids = 0;
-					var invalids = 0;
-
+					
 					//
-					// try each adjacent. A valid candidate will have 
-					// valids > 0 and invalids == 0
+					// try 0 to 3 turns for each tile (TODO: cull turns that yield equal tiles)
 					//
-					adjacents.each(function(adj){
-						var otherTile = world[row + adj[0]][col + adj[1]];
+					for(var turns = 0; turns < 4; turns++){
+						var valids = 0;
+						var invalids = 0;
+
 						//
-						// is there a tile here? if empty, that doesn't contribute to invalids
+						// try each adjacent. A valid candidate will have 
+						// valids > 0 and invalids == 0
 						//
-						if(typeof(otherTile)!=='undefined'){
+						adjacents.each(function(adj){
+							var otherTile = world[row + adj[0]][col + adj[1]];
 							//
-							// TODO: try each tile rotation
+							// is there a tile here? if empty, that doesn't contribute to invalids
 							//
-							if(tile.connectableTo(adj[2], otherTile)){
-								valids++;
-							} else {
-								invalids++;
+							if(typeof(otherTile)!=='undefined'){
+								//
+								// TODO: try each tile rotation
+								//
+								if(tile.connectableTo(adj[2], otherTile, turns)){
+									valids++;
+								} else {
+									invalids++;
+								}
 							}
-						}
-					});
+						});
 
-					if(valids > 0 && invalids === 0){
-						candidateLocations.push([row, col]);
+						if(valids > 0 && invalids === 0){
+							// store location, rotation, and number of connected edges
+							// we can use the number of connected edges later for 
+							// optimal placement and hole-filling
+							candidateLocations.push([row, col, turns, valids]);
+						}
 					}
 
 				} else {
@@ -237,34 +303,55 @@ function generateRandomWorld(){
 		if(candidateLocations.length > 0){
 			var candidateIndex = Math.round(Math.random() * (candidateLocations.length - 1));
 			var placementLocation = candidateLocations[candidateIndex];
+
+			// if we have rotation, apply rotation now
+			if(placementLocation[2] != 0){
+				tile.rotate(placementLocation[2]);
+			}
+
 			placeTile(placementLocation[0], placementLocation[1], tile);
+			maxrow = Math.max(maxrow, placementLocation[0]);
+			minrow = Math.min(minrow, placementLocation[0]);
+			maxcol = Math.max(maxcol, placementLocation[1]);
+			mincol = Math.min(mincol, placementLocation[1]);
+
 		} else {
 			// uh oh.. we have to throw this tile out
 		}
 	});
 
 	console.log("Generated world in ", ((new Date()).getTime() - startTime), "ms" );
-	return world;
+
+	return {
+		// return extents so that we can render a minimally-sized world
+		world: world,
+		extents: {
+			maxrow: maxrow,
+			maxcol: maxcol,
+			minrow: minrow,
+			mincol: mincol
+		}
+	};
 };
 
 
-function drawWorld(world){
+function drawWorld(worldObject){
+	var world = worldObject.world;
+	var extents = worldObject.extents;
+	
 	var startTime = (new Date()).getTime();
 
 	var table = $("<table><tbody></tbody></table>");
 	tbody = table.find("tbody");
 
-	for(var row = 0; row < world.length; row++){
+	for(var row = extents.minrow; row < extents.maxrow + 1; row++){
 		var tr = $("<tr></tr>");
-		for(var col = 0; col < world[row].length; col++){
+		for(var col = extents.mincol; col < extents.maxcol + 1; col++){
 			var td;
 			if(typeof(world[row][col])=='undefined'){
 				td = $("<td></td>");
 			} else {
-				//
-				// TODO: support tile rotation
-				//
-				td = $("<td><img src='img/" + world[row][col].getImage() + "' /></td>");
+				td = $("<td><img src='img/" + world[row][col].getImage() + "' class='" + world[row][col].getRotationClass() + "' /></td>");
 			}
 			tr.append(td);
 		}
