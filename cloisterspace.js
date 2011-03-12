@@ -15,7 +15,7 @@ var edgeDefs = {
 };
 
 
-var Tile = function(imageName, north, east, south, west, hasTwoCities){
+var Tile = function(imageName, north, east, south, west, hasTwoCities, hasRoadEnd){
 	var rotationClass = "";
 
 	var turnedEdge = function(dir){
@@ -36,6 +36,8 @@ var Tile = function(imageName, north, east, south, west, hasTwoCities){
 			west: west,
 			south: south
 		},
+
+    hasRoadEnd: hasRoadEnd,
 
 		getImage: function(){
 			return imageName;
@@ -100,7 +102,8 @@ var Tile = function(imageName, north, east, south, west, hasTwoCities){
 				south: this.edges.south,
 				west: this.edges.west,
 				east: this.edges.east,
-				hasTwoCities: hasTwoCities
+				hasTwoCities: hasTwoCities,
+        hasRoadEnd: hasRoadEnd
 			});
 		}
 	};
@@ -149,6 +152,10 @@ function generateRandomWorld(){
 	}).map(function(item) {
 
 		var edges = item[3].split("");
+    
+    // finds how many road edges the tile has in order to detect if tile has a road end. 
+    // tiles with road ends have 1, 3, or 4 road edges while tiles with continuous roads have 2 road edges
+    var roadEdgeCount = _(edges).reduce(function(count, def) { return def === "r" ? count + 1 : count; }, 0);
 
 		// This is a tile object
 		return {
@@ -159,6 +166,7 @@ function generateRandomWorld(){
 			west: edgeDefs[edges[3]],
 			isStart: (item[2]=="start"),
 			hasTwoCities: item[4]==="11",
+      hasRoadEnd: [1, 3, 4].indexOf(roadEdgeCount) !== -1,
 			count: parseInt(item[1])
 		};
 
@@ -176,7 +184,8 @@ function generateRandomWorld(){
 				tileDef.east,
 				tileDef.south,
 				tileDef.west,
-				tileDef.hasTwoCities
+				tileDef.hasTwoCities,
+        tileDef.hasRoadEnd
 			));
 		}
 
@@ -235,21 +244,68 @@ function generateRandomWorld(){
 		//
 
 		var adjacents = _([
-			[-1,0,"north"], // up one row
-			[1,0,"south"], // down one row
-			[0,-1,"west"], // left one column
-			[0,1,"east"] // right one column
+			{direction: "north", rowOffset:-1, colOffset: 0}, // up one row
+			{direction: "south", rowOffset: 1, colOffset: 0}, // down one row
+			{direction: "west",  rowOffset: 0, colOffset:-1}, // left one column
+			{direction: "east",  rowOffset: 0, colOffset: 1}  // right one column
 		]);
+
+    function getOppositeDirection(direction) {
+      return {
+        "east": "west", 
+        "west": "east",
+        "north": "south", 
+        "south": "north"
+      }[direction];
+    }
+
+    function getRoadLength(row, col, incomingDir) {
+      // starting at this tile find the legnth of the road
+      var tile = world[row][col];
+
+      // Empty space
+      if (!tile) { return 0; }
+
+      var edges = tile.edges;
+
+      if ([edges.north, edges.south, edges.east, edges.west].indexOf(EDGE_TYPE_ROAD) === -1) {
+        // This tile does contain a road
+        return 0; 
+      } else {
+        // Tile contains a road, length is set at 1
+        var total = 1;
+      }
+
+      if (!tile.hasRoadEnd) {
+        // cycle through directions
+        adjacents.each(function(adj) {
+          // is direction a road connection?
+          if (edges[adj.direction] === EDGE_TYPE_ROAD) {
+            // is the connection the incoming connection?
+            if (adj.direction !== incomingDir) {
+              total += getRoadLength(row + adj.rowOffset, col + adj.colOffset, getOppositeDirection(adj.direction));
+            } 
+          }
+        });
+      }
+
+      return total;
+    }
+
 
 		var candidateLocations = [];
 
 		//
-		// scan everywhere in the world with padding of 1 tile
-		//
-		// TODO: employ a bounding box keeping track of extents to improve performance
+		// scans current tilespace bounding box and padding to find available tile positions
 		//
     for(var row = minrow - 1; row < maxrow + 1; row++){
       for(var col = mincol - 1; col < maxcol + 1; col++){
+        // The starting tile position is 72, 72 the middle of the tilespace matrix
+        // The first iteration will check the available spaces around this position
+        // ie. a 3x3 grid centered on 72, 72 rows 71->73 cols 71->73
+        
+        // As more tiles are added the bounding box params minrow, maxrow and
+        // mincol, maxcol will expand and so will the scan area.
 
 				if(typeof(world[row][col])==='undefined'){
 
@@ -267,7 +323,7 @@ function generateRandomWorld(){
 						// valids > 0 and invalids == 0
 						//
 						adjacents.each(function(adj){
-							var otherTile = world[row + adj[0]][col + adj[1]];
+							var otherTile = world[row + adj.rowOffset][col + adj.colOffset];
 							//
 							// is there a tile here? if empty, that doesn't contribute to invalids
 							//
@@ -275,10 +331,11 @@ function generateRandomWorld(){
 								//
 								// TODO: try each tile rotation
 								//
-								if(tile.connectableTo(adj[2], otherTile, turns)){
+								if(tile.connectableTo(adj.direction, otherTile, turns)){
 									valids++;
 								} else {
 									invalids++;
+                  // detect length of road when tile is placed.
 								}
 							}
 						});
@@ -315,6 +372,8 @@ function generateRandomWorld(){
 			maxcol = Math.max(maxcol, placementLocation[1]);
 			mincol = Math.min(mincol, placementLocation[1]);
 
+      // detect length of road when tile is placed.
+      //console.log(getRoadLength(placementLocation[0], placementLocation[1]));
 		} else {
 			// uh oh.. we have to throw this tile out
 		}
