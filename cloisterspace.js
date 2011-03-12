@@ -235,21 +235,25 @@ function generateRandomWorld(){
 		//
 
 		var adjacents = _([
-			[-1,0,"north"], // up one row
-			[1,0,"south"], // down one row
-			[0,-1,"west"], // left one column
-			[0,1,"east"] // right one column
+			{direction: "north", rowOffset:-1, colOffset: 0}, // up one row
+			{direction: "south", rowOffset: 1, colOffset: 0}, // down one row
+			{direction: "west",  rowOffset: 0, colOffset:-1}, // left one column
+			{direction: "east",  rowOffset: 0, colOffset: 1}  // right one column
 		]);
 
 		var candidateLocations = [];
 
 		//
-		// scan everywhere in the world with padding of 1 tile
-		//
-		// TODO: employ a bounding box keeping track of extents to improve performance
+		// scans current tilespace bounding box and padding to find available tile positions
 		//
     for(var row = minrow - 1; row < maxrow + 1; row++){
       for(var col = mincol - 1; col < maxcol + 1; col++){
+        // The starting tile position is 72, 72 the middle of the tilespace matrix
+        // The first iteration will check the available spaces around this position
+        // ie. a 3x3 grid centered on 72, 72 rows 71->73 cols 71->73
+        
+        // As more tiles are added the bounding box params minrow, maxrow and
+        // mincol, maxcol will expand and so will the scan area.
 
 				if(typeof(world[row][col])==='undefined'){
 
@@ -267,7 +271,7 @@ function generateRandomWorld(){
 						// valids > 0 and invalids == 0
 						//
 						adjacents.each(function(adj){
-							var otherTile = world[row + adj[0]][col + adj[1]];
+							var otherTile = world[row + adj.rowOffset][col + adj.colOffset];
 							//
 							// is there a tile here? if empty, that doesn't contribute to invalids
 							//
@@ -275,7 +279,7 @@ function generateRandomWorld(){
 								//
 								// TODO: try each tile rotation
 								//
-								if(tile.connectableTo(adj[2], otherTile, turns)){
+								if(tile.connectableTo(adj.direction, otherTile, turns)){
 									valids++;
 								} else {
 									invalids++;
