@@ -248,8 +248,8 @@ function generateRandomWorld(){
 		//
 		// TODO: employ a bounding box keeping track of extents to improve performance
 		//
-    for(var row = 72 - i; row < 72 + i; row++){
-      for(var col = 72 - i; col < 72 + i; col++){
+    for(var row = minrow - 1; row < maxrow + 1; row++){
+      for(var col = mincol - 1; col < maxcol + 1; col++){
 
 				if(typeof(world[row][col])==='undefined'){
 
